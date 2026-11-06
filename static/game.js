@@ -22,7 +22,7 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function bridge(type, extra={}) { window.parent.postMessage({isStreamlitMessage:true,type,...extra},'*'); }
-function resize() { bridge('streamlit:setFrameHeight',{height:Math.ceil(document.body.scrollHeight)+2}); }
+function resize() { fitFullscreenBoard(); bridge('streamlit:setFrameHeight',{height:Math.ceil(document.body.scrollHeight)+2}); }
 new ResizeObserver(resize).observe(root);
 function send(action, extra={}) {
   if (pending) return;
@@ -44,8 +44,45 @@ function tone(frequency,duration=.08,type='sine',delay=0,volume=.065,end=null) {
   gain.gain.setValueAtTime(0,t);gain.gain.linearRampToValueAtTime(volume,t+.008);gain.gain.exponentialRampToValueAtTime(.001,t+duration);
   osc.connect(gain);gain.connect(audio.destination);osc.start(t);osc.stop(t+duration+.02);
 }
+function diceClatter(){
+  if(!soundEnabled||!audio||audio.state!=='running')return;
+  // Short filtered noise impacts and a low wooden resonance, slowing as the die settles.
+  [0,.07,.15,.25,.37,.51,.68,.84].forEach((delay,i)=>{
+    const duration=.055, buffer=audio.createBuffer(1,Math.ceil(audio.sampleRate*duration),audio.sampleRate);
+    const samples=buffer.getChannelData(0);
+    for(let n=0;n<samples.length;n++)samples[n]=(Math.random()*2-1)*Math.exp(-n/(audio.sampleRate*.009));
+    const source=audio.createBufferSource(), filter=audio.createBiquadFilter(), gain=audio.createGain();
+    source.buffer=buffer;filter.type='bandpass';filter.frequency.value=1100+Math.random()*1800;filter.Q.value=.7;
+    gain.gain.value=.55-i*.045;source.connect(filter);filter.connect(gain);gain.connect(audio.destination);
+    source.start(audio.currentTime+delay);source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
+    tone(170+Math.random()*90,.045,'triangle',delay,.065-i*.005,100);
+  });
+}
+async function rollOnBoard(index,value,currentGeneration){
+  const board=root.querySelector('.board-wrap'), button=document.getElementById(`dice-${index}`);
+  if(!board)return;
+  const die=document.createElement('div');die.className='board-die';die.setAttribute('role','img');
+  die.setAttribute('aria-label','Rolling dice');board.appendChild(die);
+  sound('roll');button?.classList.add('rolling');
+  const animation=reduced?null:die.animate([
+    {left:'22%',top:'30%',transform:'translate(-50%,-50%) rotate(-150deg) scale(.8)'},
+    {left:'40%',top:'43%',transform:'translate(-50%,-50%) rotate(30deg) scale(1.2)',offset:.3},
+    {left:'54%',top:'49%',transform:'translate(-50%,-50%) rotate(160deg) scale(.92)',offset:.6},
+    {left:'59%',top:'53%',transform:'translate(-50%,-50%) rotate(270deg) scale(1.08)',offset:.8},
+    {left:'60%',top:'55%',transform:'translate(-50%,-50%) rotate(360deg) scale(1)'}
+  ],{duration:900,easing:'ease-out',fill:'forwards'});
+  try{
+    for(let i=0;i<9;i++){
+      die.innerHTML=dice(1+Math.floor(Math.random()*6));
+      await sleep(reduced?30:100);if(currentGeneration!==generation)return;
+    }
+    die.innerHTML=dice(value);die.setAttribute('aria-label',`Rolled ${value}`);
+    if(button)button.innerHTML=dice(value);displayedDice[index]=value;
+    await sleep(reduced?100:350);
+  }finally{animation?.cancel();die.remove();button?.classList.remove('rolling');}
+}
 function sound(kind) {
-  if(kind==='roll') for(let i=0;i<8;i++) tone(180+Math.random()*350,.045,'triangle',i*.075,.045);
+  if(kind==='roll') diceClatter();
   if(kind==='step') tone(390,.075,'sine',0,.07,520);
   if(kind==='ladder') [440,554,659,880,1108].forEach((n,i)=>tone(n,.15,'triangle',i*.13,.065));
   if(kind==='snake') {
@@ -84,8 +121,23 @@ function viewportSize(){
   if(!nativeFullscreen())try{return {width:window.parent.visualViewport?.width||window.parent.innerWidth,height:window.parent.visualViewport?.height||window.parent.innerHeight};}catch(_){}
   return {width:window.visualViewport?.width||innerWidth,height:window.visualViewport?.height||innerHeight};
 }
+function fitFullscreenBoard(){
+  const board=root.querySelector('.board-wrap'), shell=root.querySelector('.shell');
+  if(!expandedView||!board||!shell)return;
+  const size=viewportSize(), landscape=matchMedia('(orientation:landscape) and (max-height:600px)').matches;
+  const arena=root.querySelector('.arena'), rows=[...arena.querySelectorAll('.players-row')];
+  // Measure the actual controls and margins, including wrapped laptop text.
+  const css=getComputedStyle(board), shellCss=getComputedStyle(shell);
+  const overhead=board.getBoundingClientRect().top + parseFloat(css.marginBottom) + parseFloat(shellCss.paddingBottom)
+    + (landscape?0:rows[1].getBoundingClientRect().height);
+  const availableWidth=landscape?size.width-280:arena.clientWidth;
+  const edge=Math.floor(Math.max(80,Math.min(availableWidth,size.height-overhead-8)));
+  board.style.width=edge+'px';
+  rows.forEach(row=>{if(!landscape)row.style.maxWidth=Math.min(arena.clientWidth,edge+90)+'px';else row.style.removeProperty('max-width');});
+}
 function updateFullscreenUI(){
   document.documentElement.classList.toggle('focus-mode',expandedView);
+  if(!expandedView){root.querySelector('.board-wrap')?.style.removeProperty('width');root.querySelectorAll('.players-row').forEach(row=>row.style.removeProperty('max-width'));}
   const size=viewportSize();
   document.documentElement.style.setProperty('--view-height',size.height+'px');
   document.documentElement.style.setProperty('--view-width',size.width+'px');
@@ -281,10 +333,8 @@ async function animate(event) {
   const b=document.getElementById(`dice-${i}`);if(b)b.classList.toggle('active',i===index);
   const indicator=document.getElementById(`turn-${i}`);if(indicator)indicator.textContent=i===index?'On the move':'';
  });
- refreshButtons();sound('roll');
- const button=document.getElementById(`dice-${index}`);button?.classList.add('rolling');
- for(let i=0;i<8;i++){if(button)button.innerHTML=dice(1+Math.floor(Math.random()*6));await sleep(reduced?35:80);if(currentGeneration!==generation)return;}
- button?.classList.remove('rolling');if(button)button.innerHTML=dice(event.roll);displayedDice[index]=event.roll;
+ refreshButtons();await rollOnBoard(index,event.roll,currentGeneration);
+ if(currentGeneration!==generation)return;
  const token=document.getElementById(`token-${index}`);token?.classList.add('moving');
  if(status)status.textContent=event.walk.length?`${game.players[index].name} rolled ${event.roll}. Here we go…`:'An exact roll is needed. Staying put this turn.';
  for(const square of event.walk){positions[index]=square;placeToken(index,square);sound('step');await sleep(170);if(currentGeneration!==generation)return;}
@@ -305,10 +355,9 @@ async function animateLudo(event){
   const seat=event.player,button=document.getElementById(`dice-${seat}`),status=document.getElementById('status');
   root.querySelectorAll('.player-card').forEach(card=>card.classList.toggle('active',Number(card.dataset.player)===seat));
   if(event.type==='roll'){
-    sound('roll');button?.classList.add('rolling');
     if(status)status.textContent=`${game.players[seat].name} is rolling…`;
-    for(let i=0;i<8;i++){if(button)button.innerHTML=dice(1+Math.floor(Math.random()*6));await sleep(reduced?35:80);if(currentGeneration!==generation)return;}
-    button?.classList.remove('rolling');if(button)button.innerHTML=dice(event.roll);displayedDice[seat]=event.roll;
+    await rollOnBoard(seat,event.roll,currentGeneration);
+    if(currentGeneration!==generation)return;
   }else{
     const token=document.getElementById(`piece-${seat}-${event.token}`);token?.classList.add('moving');
     for(const progress of event.walk){ludoPositions[seat][event.token]=progress;placeLudo(seat,event.token,progress);sound('step');await sleep(170);if(currentGeneration!==generation)return;}

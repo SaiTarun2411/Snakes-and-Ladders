@@ -22,6 +22,13 @@ with sync_playwright() as p:
     const cards=[...document.querySelectorAll('.player-card')].map(e=>e.getBoundingClientRect());
     return {width:innerWidth,height:innerHeight,board:{x:board.x,y:board.y,right:board.right,bottom:board.bottom},cards:cards.map(r=>({x:r.x,y:r.y,right:r.right,bottom:r.bottom}))};
   }''')
+ for width,height in [(1366,768),(1440,900),(1280,720),(1024,600),(390,844)]:
+  f.locator('#fullscreen').click()
+  page.set_viewport_size({'width':width,'height':height})
+  f.locator('#fullscreen').click();page.wait_for_timeout(300)
+  result=bounds()
+  assert result['board']['bottom']<=result['height'],result
+  assert all(r['x']>=0 and r['y']>=0 and r['bottom']<=result['height'] and r['right']<=result['width'] for r in result['cards']),result
  result=bounds();assert result['board']['bottom']<result['height'],result
  assert all(r['bottom']<=result['height'] and r['right']<=result['width'] for r in result['cards']),result
  page.screenshot(path='/tmp/fullscreen-portrait.png',full_page=True)
@@ -40,7 +47,11 @@ with sync_playwright() as p:
  f.locator('#fullscreen').click();expect(f.locator('#fullscreen')).to_have_attribute('aria-pressed','true')
  assert child.evaluate('document.documentElement.classList.contains("focus-mode")')
  assert page.locator('iframe').evaluate("e=>e.style.position==='fixed'")
- f.locator('#dice-0').click();expect(f.locator('#dice-1')).to_be_enabled(timeout=12000)
+ f.locator('#dice-0').click()
+ expect(f.locator('.board-die')).to_be_visible(timeout=10000)
+ child.wait_for_function("/^Rolled [1-6]$/.test(document.querySelector('.board-die')?.getAttribute('aria-label'))",timeout=5000)
+ expect(f.locator('.board-die')).to_have_count(0,timeout=5000)
+ expect(f.locator('#dice-1')).to_be_enabled(timeout=12000)
  expect(f.locator('#fullscreen')).to_have_attribute('aria-pressed','true')
  f.locator('#fullscreen').click();expect(f.locator('#fullscreen')).to_have_attribute('aria-pressed','false')
  assert page.locator('iframe').evaluate("e=>e.style.position!=='fixed'")
