@@ -1,7 +1,7 @@
 """Python-generated board artwork with the original snake and ladder layout."""
 import math
 from game import SNAKES, LADDERS
-COLORS = ("#26b8ed", "#fa637c", "#95cd5c", "#ffca5c")
+COLORS = ['#2684ff', '#f04452', '#31ba6b', '#ffd23f']
 
 def center(square):
     row, column = divmod(square - 1, 10)

@@ -1,6 +1,6 @@
 # AIINC Arcade
 
-Eight games share the matte-black and metallic-gold catalogue at https://game.aiinc.uk.
+Eight games share the matte-black and metallic-gold catalogue at https://game.aiinc.uk. Player identities use blue, red, green and yellow throughout, including blue/red chess pieces (the standard White/Black sides). Four in a Row animates confirmed human, computer and remote drops with a rolling rattle and landing bounces; sound follows the mute control and motion follows the reduced-motion preference.
 
 | Game | Local players | Computer mode | Private room |
 | --- | --- | --- | --- |
@@ -13,9 +13,9 @@ Eight games share the matte-black and metallic-gold catalogue at https://game.ai
 | Snake Arena | 1–2 | 1 human + 1 computer | 2 |
 | Math Rush | 1–4 | 1 human + 1–3 computers | 2–4 |
 
-Chess uses the `chess` Python library for legal moves, castling, en passant, promotion, checkmate, stalemate, and automatic draw rules. Players can claim a draw when repetition or the fifty-move rule allows it. Easy chooses random legal moves. Medium and Hard use bounded iterative-deepening alpha-beta search with material and positional evaluation; Hard has a higher depth and time budget. These are casual opponents, not rated engines.
+Chess uses the `chess` Python library for legal moves, castling, en passant, promotion, checkmate, stalemate, and automatic draw rules. Players can claim a draw when repetition or the fifty-move rule allows it. Easy chooses random legal moves. Medium and Hard use bounded iterative-deepening alpha-beta search with material and positional evaluation (120 ms / 350 ms search budgets); Hard has a higher depth and time budget. These are casual opponents, not rated engines.
 
-Dots & Boxes uses a 5×5 dot grid (16 boxes). Completing a box earns a point and another turn. A shared edge may capture two boxes. Four in a Row checks vertical, horizontal, and both diagonal lines. Tic Tac Toe uses an optimal computer opponent.
+Dots & Boxes uses a 5×5 dot grid (16 boxes). Completing a box earns a point and another turn. A shared edge may capture two boxes. Four in a Row checks vertical, horizontal, and both diagonal lines. Tic Tac Toe uses an optimal computer opponent with cached position evaluations. Computer turns have an 80 ms presentation pause; dice games use shorter computer animations and matching server cooldowns.
 
 Snake Arena has a 20×20 shared board. Start the arena, collect stars, and avoid walls and bodies. Arrow keys or on-screen controls steer Player 1; WASD steers Player 2 in local two-player matches. Solo and computer modes accept either key set for the human. Online each player controls only their own snake. Stars earn 10 points. Last survivor wins; simultaneous elimination draws. Solo wins at 120 points. At 600 steps the highest score wins. Movement is server-authoritative and network-paced; keep the tab active. Touch arrows are available on mobile.
 

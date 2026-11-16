@@ -7,7 +7,7 @@ TRACK = [(6,13),(6,12),(6,11),(6,10),(6,9),(5,8),(4,8),(3,8),(2,8),(1,8),(0,8),(
 LANES = [[(7,y) for y in range(13,8,-1)]+[(7,7)],[(x,7) for x in range(1,6)]+[(7,7)],[(7,y) for y in range(1,6)]+[(7,7)],[(x,7) for x in range(13,8,-1)]+[(7,7)]]
 YARDS = [[(1.8,10.8),(3.2,10.8),(1.8,12.2),(3.2,12.2)],[(1.8,1.8),(3.2,1.8),(1.8,3.2),(3.2,3.2)],[(10.8,1.8),(12.2,1.8),(10.8,3.2),(12.2,3.2)],[(10.8,10.8),(12.2,10.8),(10.8,12.2),(12.2,12.2)]]
 SAFE = {0,8,13,21,26,34,39,47}
-COLORS = ['#35b9ee','#ff7388','#9bd465','#ffd06a']
+COLORS = ['#2684ff', '#f04452', '#31ba6b', '#ffd23f']
 
 
 def initialise(game):
@@ -71,7 +71,7 @@ def roll_ludo(game,version,roll=None,now=None):
     else:
         game['phase']='choose'
         game['message']=f'{name} rolled {die}. Choose a highlighted token.'
-    return record(game,event,now,1.05)
+    return record(game,event,now,.45 if game['players'][seat]['kind']=='computer' else 1.05)
 
 
 def move_ludo(game,version,token,now=None):
@@ -110,7 +110,8 @@ def move_ludo(game,version,token,now=None):
         game['message']+=' A six earns another roll.'
     else:
         pass_turn(game)
-    return record(game,event,now,.35+len(walk)*.17+(.5 if captures else 0))
+    fast=player['kind']=='computer'
+    return record(game,event,now,.1+len(walk)*.07+(.18 if captures else 0) if fast else .35+len(walk)*.17+(.5 if captures else 0))
 
 
 def layout():

@@ -10,7 +10,7 @@ window.Arcade = (() => {
     {id:'snake', title:'Snake Arena', tag:'EAT. GROW. SURVIVE.', text:'Chase golden stars solo or outlast a rival in a shared arena.', icon:'〰', players:'1–2'},
     {id:'math', title:'Math Rush', tag:'SMALL SUMS. BIG FUN.', text:'Add, subtract, multiply, divide. Ten challenges each. Who tops the table?', icon:'7 × 8', players:'1–4'}
   ];
-  const colors=['#efca72','#6ccce5','#dd90be','#a7d27a'];
+  const colors=['#2684ff', '#f04452', '#31ba6b', '#ffd23f'];
   const escape = text => String(text ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const title = id => catalog.find(g=>g.id===id)?.title || 'Arcade';
   const extra = id => !['snakes','ludo'].includes(id);
@@ -24,8 +24,9 @@ window.Arcade = (() => {
     math:'Choose the correct answer from four buttons. Each correct answer earns 10 points. Players take turns, with ten questions each, using addition, subtraction, multiplication and exact division. Highest score wins. Solo play is a personal challenge out of 100.'
   };
   let selected=null, promotion=null, current=null, controls=null;
+  let dropGame=null, dropVersion=0, dropEnds=0, dropAnimation=null;
   function scoreHTML(g, seat) {
-    return g.players.map((p,i)=>`<div class="arcade-player ${!g.finished&&(g.game_type==='snake'?g.snakes[i]?.alive:g.turn===i)?'current':''}" style="--seat:${colors[i]}"><span class="seat-dot"></span><div><b>${escape(p.name)}${seat===i?' · You':''}</b><small>${g.game_type==='chess'?(i===0?'White':'Black'):g.game_type==='tictactoe'?(i===0?'X':'O'):g.game_type==='snake'?(g.snakes[i]?.alive?'In the arena':'Out'):p.kind==='computer'?'Computer':'Player '+(i+1)}</small></div>${['dots','math','snake'].includes(g.game_type)?`<strong>${g.scores[i]}<small>PTS</small></strong>`:''}</div>`).join('');
+    return g.players.map((p,i)=>`<div class="arcade-player ${!g.finished&&(g.game_type==='snake'?g.snakes[i]?.alive:g.turn===i)?'current':''}" style="--seat:${colors[i]}"><span class="seat-dot"></span><div><b>${escape(p.name)}${seat===i?' · You':''}</b><small>${g.game_type==='chess'?(i===0?'Blue · White':'Red · Black'):g.game_type==='tictactoe'?(i===0?'X':'O'):g.game_type==='snake'?(g.snakes[i]?.alive?'In the arena':'Out'):p.kind==='computer'?'Computer':'Player '+(i+1)}</small></div>${['dots','math','snake'].includes(g.game_type)?`<strong>${g.scores[i]}<small>PTS</small></strong>`:''}</div>`).join('');
   }
   const pieceChars={K:'♚',Q:'♛',R:'♜',B:'♝',N:'♞',P:'♟',k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
   const pieceNames={k:'king',q:'queen',r:'rook',b:'bishop',n:'knight',p:'pawn'};
@@ -37,7 +38,7 @@ window.Arcade = (() => {
   function boardHTML(g, seat, allowed) {
     const disabled=allowed?'':'disabled';
     if(g.game_type==='tictactoe')return `<div class="ttt-board">${g.cells.map((v,i)=>`<button class="ttt-cell ${g.winning?.includes(i)?'winning':''}" data-choice="${i}" aria-label="Row ${Math.floor(i/3)+1}, column ${i%3+1}${v===null?'':', '+(v===0?'X':'O')}" ${v!==null?'disabled':disabled} style="color:${v===null?'inherit':colors[v]}">${v===null?'':v===0?'×':'○'}</button>`).join('')}</div>`;
-    if(g.game_type==='connect4')return `<div class="connect-columns">${Array.from({length:7},(_,i)=>`<button class="quiet" data-choice="${i}" aria-label="Drop in column ${i+1}" ${g.cells[i]!==null?'disabled':disabled}>↓</button>`).join('')}</div><div class="connect-board">${g.cells.map((v,i)=>`<span class="connect-hole ${g.winning?.includes(i)?'winning':''}" role="img" aria-label="Row ${Math.floor(i/7)+1}, column ${i%7+1}: ${v===null?'empty':escape(g.players[v].name)}" style="--disc:${v===null?'#0d0d0d':colors[v]}"></span>`).join('')}</div>`;
+    if(g.game_type==='connect4')return `<div class="connect-columns">${Array.from({length:7},(_,i)=>`<button class="quiet" data-choice="${i}" aria-label="Drop in column ${i+1}" ${g.cells[i]!==null?'disabled':disabled}>↓</button>`).join('')}</div><div class="connect-board">${g.cells.map((v,i)=>`<span class="connect-hole ${g.winning?.includes(i)?'winning':''}" role="img" aria-label="Row ${Math.floor(i/7)+1}, column ${i%7+1}: ${v===null?'empty':escape(g.players[v].name)}" style="--disc:${v===null?'#0d0d0d':colors[v]}">${v===null?'':`<i class="connect-disc" data-disc="${i}"></i>`}</span>`).join('')}</div>`;
     if(g.game_type==='dots') {
       let html='';
       for(let r=0;r<4;r++)for(let c=0;c<4;c++){const owner=g.boxes[r*4+c];html+=`<span class="dots-box" style="left:${c*25}%;top:${r*25}%;background:${owner===null?'transparent':colors[owner]+'22'};color:${owner===null?'transparent':colors[owner]}">${owner===null?'':escape(g.players[owner].name.slice(0,1))}</span>`;}
@@ -86,6 +87,40 @@ window.Arcade = (() => {
     if(!current.players[player]||current.players[player].kind==='computer'||!current.snakes[player].alive)return;
     e.preventDefault();controls.send('snake_input',{seat:player,value:direction});
   });
-  function reset(){selected=null;promotion=null;current=null;controls=null;}
-  return {catalog,title,extra,counts,help,render,bind,reset};
+  function motionRemaining(){return Math.max(0,dropEnds-Date.now());}
+  function playDrop(g,reduced,onSound){
+    if(g.game_type!=='connect4')return;
+    if(dropGame!==g.id){dropGame=g.id;dropVersion=g.last_drop?.id||0;return;}
+    const drop=g.last_drop;
+    if(!drop||drop.id<=dropVersion)return;
+    dropVersion=drop.id;
+    const disc=document.querySelector(`[data-disc="${drop.index}"]`),board=document.querySelector('.connect-board');
+    if(!disc||!board)return;
+    const duration=reduced?0:500;
+    dropEnds=Date.now()+duration;
+    const buttons=()=>document.querySelectorAll('.connect-columns [data-choice]');
+    buttons().forEach(b=>b.disabled=true);
+    onSound(reduced ? .12 : .5);
+    const height=disc.getBoundingClientRect().height;
+    const distance=disc.getBoundingClientRect().top-board.getBoundingClientRect().top+height+12;
+    const animation=duration&&disc.animate?disc.animate([
+      {transform:`translateY(-${distance}px) rotate(-290deg)`,offset:0},
+      {transform:'translateY(0) rotate(-25deg)',offset:.64,easing:'ease-out'},
+      {transform:`translateY(-${height*.27}px) rotate(8deg)`,offset:.77,easing:'ease-in'},
+      {transform:'translateY(0) rotate(20deg)',offset:.87,easing:'ease-out'},
+      {transform:`translateY(-${height*.08}px) rotate(26deg)`,offset:.94,easing:'ease-in'},
+      {transform:'translateY(0) rotate(30deg)',offset:1}
+    ],{duration,easing:'ease-in',fill:'none'}):null;
+    dropAnimation=animation;
+    const complete=()=>{
+      if(dropGame!==g.id||dropVersion!==drop.id)return;
+      dropEnds=0;dropAnimation=null;
+      if(!current||current.id!==g.id||current.version!==g.version)return;
+      const allowed=!current.finished&&current.players[current.turn].kind!=='computer'&&(controls.seat===null||controls.seat===current.turn);
+      buttons().forEach(b=>b.disabled=!allowed||current.cells[Number(b.dataset.choice)]!==null);
+    };
+    if(animation)animation.finished.then(complete,complete);else complete();
+  }
+  function reset(){selected=null;promotion=null;current=null;controls=null;dropGame=null;dropVersion=0;dropEnds=0;dropAnimation?.cancel();dropAnimation=null;}
+  return {catalog,title,extra,counts,help,render,bind,reset,playDrop,motionRemaining};
 })();

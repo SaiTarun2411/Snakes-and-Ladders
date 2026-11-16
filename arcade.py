@@ -1,4 +1,5 @@
 """Server-authoritative arcade rules, chess opponents and shared Snake arenas."""
+from functools import lru_cache
 import random
 import time
 import chess
@@ -129,6 +130,8 @@ def move(g, version, value=None, computer=False, now=None):
         if index is None or g['cells'][index] is not None:
             raise GameError('That square or column is full.')
         g['cells'][index] = seat
+        if kind == 'connect4':
+            g['last_drop'] = {'id':g['version']+1, 'index':index, 'player':seat}
         winner, winning = lines(g['cells'], 3 if kind == 'tictactoe' else 7, 3 if kind == 'tictactoe' else 6, 3 if kind == 'tictactoe' else 4)
         g['winning'] = winning
         if winner is not None:
@@ -206,7 +209,7 @@ def evaluate(b):
 def choose_chess(g):
     b = chess_board(g); moves = list(b.legal_moves)
     if g['difficulty'] == 'easy': return random.choice(moves).uci()
-    deadline = time.monotonic() + (1.4 if g['difficulty'] == 'hard' else .45)
+    deadline = time.monotonic() + (.35 if g['difficulty'] == 'hard' else .12)
     def ordered(board):
         return sorted(board.legal_moves, key=lambda m: (bool(m.promotion), board.is_capture(m), board.gives_check(m)), reverse=True)
     def search(depth, alpha, beta):
@@ -235,6 +238,17 @@ def choose_chess(g):
     return best.uci()
 
 
+@lru_cache(maxsize=20000)
+def ttt_score(cells, player, computer):
+    """Reuse equivalent positions instead of re-searching every move ordering."""
+    winner, _ = lines(cells, 3, 3, 3)
+    if winner is not None: return 1 if winner == computer else -1
+    free = [i for i, cell in enumerate(cells) if cell is None]
+    if not free: return 0
+    scores = [ttt_score(cells[:i]+(player,)+cells[i+1:], 1-player, computer) for i in free]
+    return (max if player == computer else min)(scores)
+
+
 def computer_move(g):
     kind, seat = g['game_type'], g['turn']
     if kind == 'chess': return choose_chess(g)
@@ -257,16 +271,7 @@ def computer_move(g):
             cells[index] = p
             if lines(cells,width,height,length)[0] == p: return value
     if kind == 'tictactoe':
-        def minimax(cells, p):
-            winner,_ = lines(cells,3,3,3)
-            if winner is not None: return 1 if winner == seat else -1
-            free = [i for i,c in enumerate(cells) if c is None]
-            if not free: return 0
-            scores=[]
-            for i in free:
-                cells[i]=p; scores.append(minimax(cells,1-p)); cells[i]=None
-            return (max if p == seat else min)(scores)
-        return max(choices,key=lambda i: minimax(g['cells'][:i]+[seat]+g['cells'][i+1:],1-seat))
+        return max(choices,key=lambda i: ttt_score(tuple(g['cells'][:i]+[seat]+g['cells'][i+1:]),1-seat,seat))
     return min(choices,key=lambda i:abs(i-3))
 
 

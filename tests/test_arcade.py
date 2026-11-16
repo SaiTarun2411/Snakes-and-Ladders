@@ -53,6 +53,30 @@ class ArcadeRules(unittest.TestCase):
         for _ in range(6):self.play(g,0)
         with self.assertRaises(GameError):self.play(g,0)
 
+    def test_connect_four_drop_metadata_tracks_actual_landing_and_seat(self):
+        g=new_game(game_type='connect4')
+        self.play(g,3)
+        self.assertEqual(g['last_drop'],{'id':1,'index':38,'player':0})
+        self.play(g,3)
+        self.assertEqual(g['last_drop'],{'id':2,'index':31,'player':1})
+        with self.assertRaises(GameError):move(g,1,3)
+        self.assertEqual(g['last_drop']['id'],2)
+
+    def test_computer_dice_moves_have_shorter_guards_but_reject_early_moves(self):
+        human=new_game(2,game_type='snakes')
+        cpu=new_game(2,'computer',game_type='snakes');cpu['turn']=1
+        play_turn(human,0,6,now=100);play_turn(cpu,0,6,now=100)
+        self.assertLess(cpu['ready_at'],human['ready_at'])
+        with self.assertRaises(GameError):play_turn(cpu,1,1,now=100.1)
+        from ludo import roll_ludo, move_ludo
+        human=new_game(2,game_type='ludo')
+        cpu=new_game(2,'computer',game_type='ludo');cpu['turn']=1
+        roll_ludo(human,0,6,now=100);roll_ludo(cpu,0,6,now=100)
+        self.assertLess(cpu['ready_at'],human['ready_at'])
+        with self.assertRaises(GameError):move_ludo(cpu,1,0,now=100.1)
+        move_ludo(cpu,1,0,now=cpu['ready_at'])
+        self.assertEqual(cpu['players'][1]['tokens'][0],0)
+
     def test_dots_capture_retains_turn_and_double_box(self):
         g=new_game(game_type='dots')
         shared='v-0-1'

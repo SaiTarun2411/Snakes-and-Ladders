@@ -2,8 +2,8 @@
 (() => {
 'use strict';
 const root = document.getElementById('app');
-const COLORS = ['#35b9ee','#ff7388','#9bd465','#ffd06a'];
-const NAMES = ['Sky','Rose','Fern','Sun'];
+const COLORS = ['#2684ff', '#f04452', '#31ba6b', '#ffd23f'];
+const NAMES = ['Blue','Red','Green','Yellow'];
 const PIPS = {1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
 let receivedAt=Date.now();
 const serverNow=()=>data?data.now+(Date.now()-receivedAt)/1000:0;
@@ -46,7 +46,8 @@ function tone(frequency,duration=.08,type='sine',delay=0,volume=.065,end=null) {
   gain.gain.setValueAtTime(0,t);gain.gain.linearRampToValueAtTime(volume,t+.008);gain.gain.exponentialRampToValueAtTime(.001,t+duration);
   osc.connect(gain);gain.connect(audio.destination);osc.start(t);osc.stop(t+duration+.02);
 }
-function diceClatter(){
+function diceClatter(duration=.9){
+  const speed=duration/.9;
   if(!soundEnabled||!audio||audio.state!=='running')return;
   // Short filtered noise impacts and a low wooden resonance, slowing as the die settles.
   [0,.07,.15,.25,.37,.51,.68,.84].forEach((delay,i)=>{
@@ -56,32 +57,51 @@ function diceClatter(){
     const source=audio.createBufferSource(), filter=audio.createBiquadFilter(), gain=audio.createGain();
     source.buffer=buffer;filter.type='bandpass';filter.frequency.value=1100+Math.random()*1800;filter.Q.value=.7;
     gain.gain.value=.55-i*.045;source.connect(filter);filter.connect(gain);gain.connect(audio.destination);
-    source.start(audio.currentTime+delay);source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
-    tone(170+Math.random()*90,.045,'triangle',delay,.065-i*.005,100);
+    source.start(audio.currentTime+delay*speed);source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
+    tone(170+Math.random()*90,.045,'triangle',delay*speed,.065-i*.005,100);
   });
 }
 async function rollOnBoard(index,value,currentGeneration){
+  const fast=game.players[index].kind==='computer';
+  const rollDuration=fast?320:900, frames=fast?5:9;
   const board=root.querySelector('.board-wrap'), button=document.getElementById(`dice-${index}`);
   if(!board)return;
   const die=document.createElement('div');die.className='board-die';die.setAttribute('role','img');
   die.setAttribute('aria-label','Rolling dice');board.appendChild(die);
-  sound('roll');button?.classList.add('rolling');
+  diceClatter(rollDuration/1000);button?.classList.add('rolling');
   const animation=reduced?null:die.animate([
     {left:'22%',top:'30%',transform:'translate(-50%,-50%) rotate(-150deg) scale(.8)'},
     {left:'40%',top:'43%',transform:'translate(-50%,-50%) rotate(30deg) scale(1.2)',offset:.3},
     {left:'54%',top:'49%',transform:'translate(-50%,-50%) rotate(160deg) scale(.92)',offset:.6},
     {left:'59%',top:'53%',transform:'translate(-50%,-50%) rotate(270deg) scale(1.08)',offset:.8},
     {left:'60%',top:'55%',transform:'translate(-50%,-50%) rotate(360deg) scale(1)'}
-  ],{duration:900,easing:'ease-out',fill:'forwards'});
+  ],{duration:rollDuration,easing:'ease-out',fill:'forwards'});
   try{
-    for(let i=0;i<9;i++){
+    for(let i=0;i<frames;i++){
       die.innerHTML=dice(1+Math.floor(Math.random()*6));
-      await sleep(reduced?30:100);if(currentGeneration!==generation)return;
+      await sleep(reduced?20:rollDuration/frames);if(currentGeneration!==generation)return;
     }
     die.innerHTML=dice(value);die.setAttribute('aria-label',`Rolled ${value}`);
     if(button)button.innerHTML=dice(value);displayedDice[index]=value;
-    await sleep(reduced?100:350);
+    await sleep(fast?70:reduced?100:350);
   }finally{animation?.cancel();die.remove();button?.classList.remove('rolling');}
+}
+function discRoll(duration=.5) {
+  if(!soundEnabled||!audio||audio.state!=='running')return;
+  // A short rolling rattle followed by diminishing landing bounces.
+  const buffer=audio.createBuffer(1,Math.ceil(audio.sampleRate*duration),audio.sampleRate);
+  const samples=buffer.getChannelData(0);
+  for(let i=0;i<samples.length;i++){
+    const t=i/audio.sampleRate, roll=Math.max(0,1-t/duration);
+    samples[i]=(Math.random()*2-1)*roll*(.25+.75*Math.pow(Math.sin(t*180),2));
+  }
+  const source=audio.createBufferSource(),filter=audio.createBiquadFilter(),gain=audio.createGain();
+  source.buffer=buffer;filter.type='lowpass';filter.frequency.setValueAtTime(1800,audio.currentTime);
+  filter.frequency.exponentialRampToValueAtTime(500,audio.currentTime+duration);
+  gain.gain.setValueAtTime(.16,audio.currentTime);gain.gain.exponentialRampToValueAtTime(.001,audio.currentTime+duration);
+  source.connect(filter);filter.connect(gain);gain.connect(audio.destination);source.start();
+  source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
+  [.64,.84,.96].forEach((at,i)=>tone(220-i*35,.045,'triangle',duration*at,.1/(i+1),95));
 }
 function sound(kind) {
   if(kind==='roll') diceClatter();
@@ -230,11 +250,12 @@ function playerCard(index) {
   return `<article class="player-card ${active?'active':''}" style="--player:${COLORS[index]}" data-player="${index}"><span class="player-pin">${pin(COLORS[index])}</span><div><div class="player-name">${esc(p.name)}${data.seat===index?' · You':''}</div><div class="player-meta" id="position-${index}">${isLudo()?`${p.tokens.filter(t=>t===56).length} of 4 home`:positions[index]===0?'At the start':`Square ${positions[index]}`}</div><div class="turn-indicator" id="turn-${index}">${active?busy?'On the move':p.kind==='computer'?'Thinking…':isLudo()&&game.phase==='choose'?'Pick a token':data.seat!==null&&data.seat!==index?'Their turn':'Your turn':'&nbsp;'}</div></div><button class="dice-button ${active?'active':''}" id="dice-${index}" data-roll="${index}" aria-label="Roll dice for ${esc(p.name)}" ${canRoll(index)?'':'disabled'}>${dice(value)}${active?'<span class="roll-label">'+(p.kind==='computer'?'CPU':'ROLL')+'</span>':''}</button></article>`;
 }
 function arcadePage() {
-  const allowed=!pending&&!game.finished&&game.players[game.turn].kind!=='computer'&&(data.seat===null||data.seat===game.turn);
+  const allowed=!pending&&!Arcade.motionRemaining()&&!game.finished&&game.players[game.turn].kind!=='computer'&&(data.seat===null||data.seat===game.turn);
   const mode=game.mode==='friends'?`ROOM ${esc(data.room)}`:game.mode==='computer'?`VS COMPUTER${game.game_type==='chess'?' · '+game.difficulty.toUpperCase():''}`:game.players.length===1?'SOLO':`${game.players.length} PLAYER LOCAL`;
   shell(`<div class="game-topline"><h1>${esc(Arcade.title(game.game_type))}</h1><span class="pill">${mode}</span></div><div class="game-toolbar"><button class="quiet" id="exit">← Games</button>${game.mode!=='friends'?'<button class="quiet" id="reset">↻ New game</button>':'<button class="quiet" id="share-room">↗ Share room</button>'}</div>${Arcade.render(game,data.seat,allowed)}`);
-  const act=(action,extra={})=>{unlockAudio();if(!pending){if(action==='arcade_move')sound('step');send(action,extra);}};
+  const act=(action,extra={})=>{unlockAudio();if(!pending){if(action==='arcade_move'&&game.game_type!=='connect4')sound('step');send(action,extra);}};
   Arcade.bind(game,data.seat,allowed,act);
+  Arcade.playDrop(game,reduced,discRoll);
   document.getElementById('exit').onclick=()=>{Arcade.reset();send('home');};
   const reset=document.getElementById('reset');if(reset)reset.onclick=()=>{Arcade.reset();send('restart');};
   const share=document.getElementById('share-room');if(share)share.onclick=shareRoom;
@@ -246,7 +267,7 @@ function scheduleArcade() {
     if(game.started)arcadeTimer=setTimeout(()=>{if(!pending&&game?.game_type==='snake'&&!game.finished)send('tick');},230);
   }else if(game.players[game.turn].kind==='computer'){
     const version=game.version;
-    arcadeTimer=setTimeout(()=>{if(!pending&&game?.version===version)send('arcade_move',{version,computer:true});},650);
+    arcadeTimer=setTimeout(()=>{if(!pending&&game?.version===version)send('arcade_move',{version,computer:true});},Math.max(80,Arcade.motionRemaining()+15));
   }
 }
 function gamePage() {
@@ -312,9 +333,10 @@ function placeToken(index,square,transition=true) {
   const label=document.getElementById(`position-${index}`);if(label)label.textContent=square===0?'At the start':`Square ${square}`;
 }
 async function followSnake(index,event,currentGeneration) {
+  const duration=game.players[index].kind==='computer'?450:1050;
   const token=document.getElementById(`token-${index}`);
   const path=root.querySelector(`.board-wrap .art [data-snake-start="${event.landing}"] path`);
-  if(!token||!path||reduced){placeToken(index,event.destination,false);await sleep(1050);return;}
+  if(!token||!path||reduced){placeToken(index,event.destination,false);await sleep(duration);return;}
   const length=path.getTotalLength(), head=path.getPointAtLength(0), tail=path.getPointAtLength(length);
   const start={x:parseFloat(token.style.left)*6,y:parseFloat(token.style.top)*6};
   const finish=coords(event.destination,index);
@@ -326,7 +348,7 @@ async function followSnake(index,event,currentGeneration) {
   await new Promise(resolve=>{
     function frame(now){
       if(currentGeneration!==generation){resolve();return;}
-      const elapsed=Math.min(1050,now-started);
+      const elapsed=Math.min(1050,(now-started)*1050/duration);
       let point;
       if(elapsed<100){const t=elapsed/100;point={x:start.x+(head.x-start.x)*t,y:start.y+(head.y-start.y)*t};}
       else if(elapsed<900){point=path.getPointAtLength(length*(elapsed-100)/800);}
@@ -354,7 +376,8 @@ function showWinner() {
 async function animate(event) {
  if(isLudo())return animateLudo(event);
  const currentGeneration=generation;busy=true;animPlayer=event.player;
- const index=event.player;
+ const index=event.player,fast=game.players[index].kind==='computer';
+ root.classList.toggle('cpu-motion',fast);
  const status=document.getElementById('status');if(status)status.textContent=`${game.players[index].name} is rolling…`;
  // Update cards without rebuilding the board or interrupting token transitions.
  root.querySelectorAll('.player-card').forEach(card=>{
@@ -366,21 +389,23 @@ async function animate(event) {
  if(currentGeneration!==generation)return;
  const token=document.getElementById(`token-${index}`);token?.classList.add('moving');
  if(status)status.textContent=event.walk.length?`${game.players[index].name} rolled ${event.roll}. Here we go…`:'An exact roll is needed. Staying put this turn.';
- for(const square of event.walk){positions[index]=square;placeToken(index,square);sound('step');await sleep(170);if(currentGeneration!==generation)return;}
+ for(const square of event.walk){positions[index]=square;placeToken(index,square);sound('step');await sleep(fast?70:170);if(currentGeneration!==generation)return;}
  token?.classList.remove('moving');
  if(event.special){
   if(status)status.textContent=event.special==='ladder'?`A ladder! Climbing ${event.landing} → ${event.destination}.`:`A snake! Sliding ${event.landing} → ${event.destination}.`;
   sound(event.special);
   if(event.special==='snake')await followSnake(index,event,currentGeneration);
-  else{token?.classList.add('jump');placeToken(index,event.destination);await sleep(1050);token?.classList.remove('jump');}
+  else{token?.classList.add('jump');placeToken(index,event.destination);await sleep(fast?450:1050);token?.classList.remove('jump');}
   positions[index]=event.destination;
  }
- await sleep(Math.max(220,(game.ready_at-serverNow())*1000+30));if(currentGeneration!==generation)return;
- positions[index]=event.destination;seen=event.id;busy=false;animPlayer=null;
+ await sleep(Math.max(fast?50:220,(game.ready_at-serverNow())*1000+15));if(currentGeneration!==generation)return;
+ positions[index]=event.destination;seen=event.id;busy=false;animPlayer=null;root.classList.remove('cpu-motion');
  if(!queue.length){positions=game.players.map(p=>p.position);gamePage();if(game.winner!==null)sound('win');scheduleComputer();}
 }
 async function animateLudo(event){
   const currentGeneration=generation;busy=true;animPlayer=event.player;refreshButtons();
+  const fast=game.players[event.player].kind==='computer';
+  root.classList.toggle('cpu-motion',fast);
   const seat=event.player,button=document.getElementById(`dice-${seat}`),status=document.getElementById('status');
   root.querySelectorAll('.player-card').forEach(card=>card.classList.toggle('active',Number(card.dataset.player)===seat));
   if(event.type==='roll'){
@@ -389,13 +414,13 @@ async function animateLudo(event){
     if(currentGeneration!==generation)return;
   }else{
     const token=document.getElementById(`piece-${seat}-${event.token}`);token?.classList.add('moving');
-    for(const progress of event.walk){ludoPositions[seat][event.token]=progress;placeLudo(seat,event.token,progress);sound('step');await sleep(170);if(currentGeneration!==generation)return;}
+    for(const progress of event.walk){ludoPositions[seat][event.token]=progress;placeLudo(seat,event.token,progress);sound('step');await sleep(fast?70:170);if(currentGeneration!==generation)return;}
     token?.classList.remove('moving');
-    if(event.captures?.length){sound('snake');for(const captured of event.captures){ludoPositions[captured.player][captured.token]=-1;placeLudo(captured.player,captured.token,-1);}await sleep(500);}
+    if(event.captures?.length){sound('snake');for(const captured of event.captures){ludoPositions[captured.player][captured.token]=-1;placeLudo(captured.player,captured.token,-1);}await sleep(fast?180:500);}
     if(event.destination===56)sound('ladder');
   }
-  await sleep(Math.max(120,(game.ready_at-serverNow())*1000+30));if(currentGeneration!==generation)return;
-  seen=event.id;busy=false;animPlayer=null;
+  await sleep(Math.max(fast?40:120,(game.ready_at-serverNow())*1000+15));if(currentGeneration!==generation)return;
+  seen=event.id;busy=false;animPlayer=null;root.classList.remove('cpu-motion');
   if(!queue.length){ludoPositions=game.players.map(p=>[...p.tokens]);positions=game.players.map(p=>p.position);gamePage();if(game.winner!==null)sound('win');scheduleComputer();}
 }
 function scheduleComputer() {
@@ -414,7 +439,7 @@ function scheduleComputer() {
      })[0];
      send('move',{version:expected,computer:true,token});
    }else send('roll',{version:expected,computer:true});
- },Math.max(650,remaining+200));
+ },Math.max(80,remaining+25));
 }
 function showHelp() {
  if(helpOpen)return;helpOpen=true;const modal=document.createElement('div');modal.className='help';modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-label','How to play');

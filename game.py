@@ -91,7 +91,8 @@ def play_turn(game, expected_version, roll=None, now=None):
     else:
         game['turn'] = (player+1) % len(game['players'])
     game['message'] = message
-    game['ready_at'] = now + .85 + len(walk)*.17 + (1.05 if special else 0) + .35
+    fast = game['players'][player]['kind'] == 'computer'
+    game['ready_at'] = now + (.45 + len(walk)*.07 + (.45 if special else 0) + .08 if fast else .85 + len(walk)*.17 + (1.05 if special else 0) + .35)
     return event
 
 
