@@ -100,3 +100,30 @@ header{padding-bottom:22px}
 
 
 @media(max-width:420px){header{flex-wrap:wrap;gap:14px}.tools{margin-left:auto}.arcade-hero h1{font-size:43px}}
+
+/* Polished metallic gold against neutral matte black. */
+:root{--bg:#0c0c0c;--panel:#171717;--line:#38342a;--gold:#efca72;--mint:#efca72;--muted:#aaa69d;--metal:linear-gradient(115deg,#aa7624 0%,#e9c876 19%,#fff3bd 32%,#d8ac4c 46%,#bb882d 57%,#f6db91 76%,#fff0b5 84%,#b17c27 100%)}
+body,.shell{background:#0c0c0c}
+.shell:before{background:none}
+.brand-mark,.quiet,.setup-panel,.lobby-player,.field,.tabs button,.count-options button{background:#181818}
+.brand-mark{border-color:#796033;box-shadow:inset 0 1px 0 #ffffff0d}
+.brand-mark svg{overflow:visible}
+.arcade-hero h1 span{color:#f0cc77;background:var(--metal);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero-emblem{background:#101010;border-color:#8e713a66;box-shadow:inset 0 0 0 20px #ffffff02;transform:rotate(-7deg)}
+.hero-emblem:before{border-style:solid;border-color:#e5c57522}
+.hero-emblem svg{width:85%;filter:drop-shadow(0 18px 16px #000b)}
+.primary,.selected .game-selected,.count-options .selected{background:var(--metal);color:#171108;border:1px solid #e9c976;box-shadow:inset 0 1px 0 #fff8d6,0 3px 0 #79521c,0 6px 16px #0005}
+.primary:hover{background:linear-gradient(115deg,#d4a349,#fff3bd 31%,#e1bb64 48%,#fff0b5 80%,#cf9d45);box-shadow:inset 0 1px 0 #fffbe6,0 3px 0 #79521c,0 8px 20px #0007}
+.game-card{background:#161616;border-color:#36332d}
+.game-card.selected{border-color:#e6c271;box-shadow:inset 0 1px 0 #ffedba55,0 0 0 1px #a47b2b44}
+.game-preview{background:#1b1b1b;border-bottom:1px solid #34312a}
+.preview-board{border-color:#d2ad57;box-shadow:0 0 0 1px #ffedba77,0 15px 40px #0009}
+.game-selected{background:#111111f2;border-color:#8a6d34;color:#f3d48b}
+.mode-card{background:#181818;box-shadow:inset 0 1px 0 #ffffff05}
+.mode-card:after{opacity:.025}
+.mode-card:hover{border-color:#e6c271;box-shadow:inset 0 1px 0 #ffedba33}
+.mode-card .icon{background:#d4ac4a12;color:#f3d48b;border:1px solid #c9a65333}
+.tabs .selected{background:#333028;color:#ffe7a6}
+.player-card{background:#181818}.player-card.active{background:color-mix(in srgb,var(--player) 10%,#181818)}
+.modal article{background:#181818}
+.pill{background:#efca7208;border-color:#d8b96544}
