@@ -84,11 +84,11 @@ def payload():
 
 
 def main():
-    st.set_page_config(page_title='Board Game Clubhouse · Snakes & Ladders + Ludo', page_icon='🎲', layout='wide', initial_sidebar_state='collapsed')
+    st.set_page_config(page_title='AIINC Arcade · Ludo + Snakes & Ladders', page_icon=str(ROOT / 'static' / 'controller.svg'), layout='wide', initial_sidebar_state='collapsed')
     st.markdown('''<style>
       [data-testid="stHeader"], footer {display:none}
       .stMainBlockContainer {padding:0!important;max-width:none!important}
-      .stApp {background:#101a2d}
+      .stApp {background:#0b0b0b}
       [data-testid="stCustomComponentV1"] {width:100%}
     </style>''', unsafe_allow_html=True)
     for key, value in {'client': secrets.token_urlsafe(24), 'local_game': None, 'room': None, 'error': '', 'last_nonce': None}.items():
