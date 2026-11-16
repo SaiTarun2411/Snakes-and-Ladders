@@ -1,1 +1,2 @@
 streamlit>=1.49,<2
+chess==1.11.2

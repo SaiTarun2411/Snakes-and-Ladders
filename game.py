@@ -14,13 +14,16 @@ class GameError(ValueError):
     pass
 
 
-def new_game(count=2, mode='local', name='You', game_type='snakes'):
+def new_game(count=2, mode='local', name='You', game_type='snakes', difficulty='medium'):
     if not isinstance(count, int) or not 1 <= count <= 4:
         raise GameError('Choose between one and four players.')
     if mode not in ('local', 'computer', 'friends'):
         raise GameError('Choose a game mode.')
-    if game_type not in ('snakes', 'ludo'):
-        raise GameError('Choose Snakes and Ladders or Ludo.')
+    from arcade import TYPES, validate_count
+    if game_type not in ('snakes', 'ludo') + TYPES:
+        raise GameError('Choose a game from the arcade.')
+    if game_type in TYPES:
+        validate_count(game_type, count, lobby=mode == 'friends')
     game = {
         'game_type': game_type, 'id': uuid.uuid4().hex, 'mode': mode, 'turn': 0, 'winner': None,
         'players': [{'name': (name if i == 0 else f'Computer {i}') if mode == 'computer' else f'Player {i+1}',
@@ -30,6 +33,9 @@ def new_game(count=2, mode='local', name='You', game_type='snakes'):
         'message': 'The adventure starts here. Roll the dice!', 'status': 'playing',
     }
 
+    if game_type in TYPES:
+        from arcade import initialise as init_arcade
+        init_arcade(game, difficulty)
     if game_type == 'ludo':
         from ludo import initialise
         initialise(game)
@@ -41,6 +47,8 @@ def play_turn(game, expected_version, roll=None, now=None):
     if game.get('game_type') == 'ludo':
         from ludo import roll_ludo
         return roll_ludo(game, expected_version, roll, now)
+    if game.get('game_type') not in ('snakes', 'ludo'):
+        raise GameError('Use this game’s move controls.')
     now = time.time() if now is None else now
     if game['status'] != 'playing' or game['winner'] is not None:
         raise GameError('This game is not taking turns right now.')
@@ -101,9 +109,11 @@ class RoomStore:
         room['updated'] = time.time()
         return room
 
-    def create(self, client, name, capacity, game_type='snakes'):
+    def create(self, client, name, capacity, game_type='snakes', difficulty='medium'):
         if capacity not in (2, 3, 4):
             raise GameError('Friend rooms need two to four players.')
+        from arcade import TYPES, validate_count
+        if game_type in TYPES: validate_count(game_type, capacity)
         with self.lock:
             self.rooms = {k: v for k, v in self.rooms.items() if time.time()-v['updated'] < 21600}
             if len(self.rooms) >= 1000:
@@ -111,7 +121,7 @@ class RoomStore:
             code = ''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZ23456789') for _ in range(6))
             while code in self.rooms:
                 code = ''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZ23456789') for _ in range(6))
-            game = new_game(1, 'friends', game_type=game_type)
+            game = new_game(1, 'friends', game_type=game_type, difficulty=difficulty)
             game['status'] = 'lobby'
             game['players'][0]['name'] = clean_name(name)
             self.rooms[code] = {'game': game, 'members': [client], 'capacity': capacity, 'updated': time.time()}
@@ -130,22 +140,43 @@ class RoomStore:
                 player['tokens'] = [-1]*4
             room['game']['players'].append(player)
             room['game']['dice'].append(None)
+            from arcade import TYPES, add_player
+            if room['game']['game_type'] in TYPES: add_player(room['game'])
 
     def snapshot(self, code, client):
         with self.lock:
             room = self._room(code)
             if client not in room['members']:
                 raise GameError('Join this room first.')
+            if room['game']['game_type'] == 'snake':
+                from arcade import snake_tick
+                snake_tick(room['game'])
             return deepcopy(room['game']), room['members'].index(client), room['capacity']
 
-    def action(self, code, client, action, version=None, token=None):
+    def action(self, code, client, action, version=None, token=None, value=None):
         with self.lock:
             room = self._room(code)
             if client not in room['members']:
                 raise GameError('Join this room first.')
             seat = room['members'].index(client)
             game = room['game']
-            if action == 'start':
+            if action in ('arcade_move', 'snake_input', 'snake_start', 'tick', 'claim_draw'):
+                from arcade import TYPES, move, snake_input, snake_start, snake_tick, chess_board, finish
+                if game['game_type'] not in TYPES: raise GameError('Choose an arcade game first.')
+                if action in ('arcade_move', 'claim_draw'):
+                    if seat != game['turn']: raise GameError('It is another player’s turn.')
+                    if action == 'arcade_move': move(game, version, value)
+                    else:
+                        if game['game_type'] != 'chess' or game['status'] != 'playing' or game['finished'] or version != game['version'] or not chess_board(game).can_claim_draw(): raise GameError('No draw can be claimed.')
+                        finish(game, [], 'Draw claimed by repetition or the fifty-move rule.'); game['version'] += 1
+                else:
+                    if game['game_type'] != 'snake': raise GameError('Choose Snake Arena.')
+                    if action == 'snake_input': snake_input(game, seat, value)
+                    elif action == 'snake_start':
+                        if seat != 0: raise GameError('Only the host can start the arena.')
+                        snake_start(game)
+                    else: snake_tick(game)
+            elif action == 'start':
                 if seat != 0:
                     raise GameError('Only the room host can start the game.')
                 if len(room['members']) != room['capacity']:
@@ -164,9 +195,9 @@ class RoomStore:
             elif action == 'restart':
                 if seat != 0:
                     raise GameError('Only the room host can start a rematch.')
-                if game['winner'] is None:
+                if game['winner'] is None and not game.get('finished'):
                     raise GameError('Finish this game before starting a rematch.')
-                fresh = new_game(len(game['players']), 'friends', game_type=game.get('game_type', 'snakes'))
+                fresh = new_game(len(game['players']), 'friends', game_type=game.get('game_type', 'snakes'), difficulty=game.get('difficulty', 'medium'))
                 for i, p in enumerate(game['players']):
                     fresh['players'][i]['name'] = p['name']
                 room['game'] = fresh
